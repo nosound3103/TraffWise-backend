@@ -1,4 +1,3 @@
-from middleware import setup_cors
 from typing import Literal, List, Optional
 from fastapi import FastAPI, Request, Response, HTTPException
 from pydantic import BaseModel
@@ -12,68 +11,22 @@ from pathlib import Path
 from datetime import datetime
 
 from api.source.operators.controller import Controller
+from schemas.schemas import (
+    ModelRequest,
+    CameraRequest,
+    CaptureRequest,
+    Violation,
+    AnnotationToggleRequest,
+    SystemParameters,
+)
+from middleware import setup_cors
 
 BASE_DIR = Path(__file__).parent.absolute()
 sys.path.append(str(BASE_DIR))
 
-# Create captures directory if it doesn't exist
 CAPTURES_DIR = BASE_DIR / "captures"
 CAPTURES_DIR.mkdir(exist_ok=True)
 print(f"Captures will be saved to: {CAPTURES_DIR}")
-
-
-class ModelRequest(BaseModel):
-    model_type: Literal["yolo11", "rtdetrv2", "faster_rcnn"]
-
-
-class CameraRequest(BaseModel):
-    camera_id: Literal["1", "2"]
-
-
-class CaptureRequest(BaseModel):
-    camera_id: Literal["1", "2"]
-    model_type: Literal["yolo11", "rtdetrv2", "faster_rcnn"]
-
-
-class Violation(BaseModel):
-    id: str
-    plate: str
-    type: str
-    status: str
-    date: str
-    location: str
-    evidence: str
-    speed: Optional[str] = None
-    signalTime: Optional[str] = None
-    laneDetails: Optional[str] = None
-
-
-class RewindRequest(BaseModel):
-    seconds: int = 10
-
-
-class AnnotationToggleRequest(BaseModel):
-    show_annotations: bool
-
-
-class SystemParameters(BaseModel):
-    speedEstimationEnabled: bool = True
-    speedLimit: float = 60
-    overspeedBuffer: float = 5
-    maxHistorySeconds: float = 3.0
-
-    redLightDetectionEnabled: bool = True
-    maxTrackRLV: int = 50
-
-    wrongLaneDetectionEnabled: bool = True
-    angleThreshold: float = 90
-    straightThreshold: float = 30
-    dotThreshold: float = -0.5
-    toleranceTime: float = 3
-
-    confidenceThreshold: float = 0.5
-    nmsThreshold: float = 0.45
-    maxAge: int = 15
 
 
 app = FastAPI()
@@ -160,9 +113,15 @@ async def video_feed():
 async def reset_controller(request: dict = None):
     """Reset the controller to initial state."""
     try:
-        camera_id = request.get("camera_id") if request else None
-        result = controller.reset_state(camera_id)
-        return result
+
+        global controller
+
+        with open("api\configs\pipeline.yml", "r") as file:
+            config = yaml.safe_load(file)
+
+        controller = Controller(config)
+
+        return {"status": "success", "message": "Controller reset to initial state"}
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to reset controller: {str(e)}")
@@ -193,12 +152,20 @@ async def toggle_annotations(request: AnnotationToggleRequest):
 
 
 @app.post("/api/parameters")
-async def update_parameters(params: SystemParameters):
+async def update_parameters(params: dict):
     try:
-        controller.update_parameters(params.model_dump())
-        return {"success": True, "message": "Parameters updated successfully"}
+        print("Received parameters:", params)  # Debug log
+        controller.update_parameters(params)
+
+        # Get updated config to verify changes
+        updated_config = controller.get_system_config()
+        return {
+            "success": True,
+            "message": "Parameters updated successfully",
+            "config": updated_config
+        }
     except Exception as e:
-        print(f"Error updating parameters: {str(e)}")  # Add this line
+        print(f"Error updating parameters: {str(e)}")
         raise HTTPException(
             status_code=500, detail=f"Failed to update parameters: {str(e)}")
 
@@ -228,3 +195,17 @@ async def get_violation(violation_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to fetch violation: {str(e)}")
+
+
+@app.get("/api/camera/{camera_id}/config")
+async def get_camera_config(camera_id: str):
+    """Get configuration for specific camera"""
+    try:
+        config = controller.get_system_config()
+        if config is None:
+            raise HTTPException(
+                status_code=404, detail="Configuration not found")
+        return config
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get config: {str(e)}")
