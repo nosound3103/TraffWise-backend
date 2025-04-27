@@ -54,8 +54,12 @@ async def set_model(request: ModelRequest):
 async def set_camera(request: CameraRequest):
     """Sets the camera to be used for video feed."""
     try:
-        controller.switch_camera(request.camera_id)
-        return {"status": "success", "camera_id": request.camera_id}
+        updated_config = controller.switch_camera(request.camera_id)
+        return {
+            "status": "success",
+            "camera_id": request.camera_id,
+            "config": updated_config
+        }
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to switch camera: {str(e)}")
@@ -154,7 +158,6 @@ async def toggle_annotations(request: AnnotationToggleRequest):
 @app.post("/api/parameters")
 async def update_parameters(params: dict):
     try:
-        print("Received parameters:", params)  # Debug log
         controller.update_parameters(params)
 
         # Get updated config to verify changes
@@ -170,7 +173,31 @@ async def update_parameters(params: dict):
             status_code=500, detail=f"Failed to update parameters: {str(e)}")
 
 
-# Add API endpoints for violations
+@app.post("/api/camera/{camera_id}/parameters")
+async def update_camera_parameters(camera_id: str, request: Request):
+    """Update parameters for specific camera"""
+    try:
+        body = await request.json()
+        settings = body.get("settings")
+
+        if not settings:
+            raise HTTPException(
+                status_code=400, detail="Settings not provided")
+
+        controller.update_parameters(settings)
+
+        return {
+            "status": "success",
+            "camera_id": camera_id,
+            "config": settings
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update camera parameters: {str(e)}"
+        )
+
+
 @app.get("/api/violations", response_model=List[dict])
 async def get_violations(limit: Optional[int] = None):
     """Get all traffic violations"""
