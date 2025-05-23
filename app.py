@@ -33,7 +33,7 @@ app = FastAPI()
 # app.add_middleware(LogMiddleware)
 setup_cors(app)
 
-with open("api\configs\pipeline.yml", "r") as file:
+with open("api/configs/pipeline.yml", "r") as file:
     config = yaml.safe_load(file)
 
 controller = Controller(config)

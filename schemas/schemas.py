@@ -7,11 +7,11 @@ class ModelRequest(BaseModel):
 
 
 class CameraRequest(BaseModel):
-    camera_id: Literal["1", "2", "3", "4", "5"]
+    camera_id: str
 
 
 class CaptureRequest(BaseModel):
-    camera_id: Literal["1", "2", "3", "4", "5"]
+    camera_id: str
     model_type: Literal["yolo11", "rtdetrv2", "faster_rcnn"]
 
 
