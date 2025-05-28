@@ -1,5 +1,5 @@
-from typing import Literal, List, Optional
-from fastapi import FastAPI, Request, Response, HTTPException
+from typing import List, Optional
+from fastapi import FastAPI, Request, File, UploadFile, HTTPException
 from pydantic import BaseModel
 from starlette.responses import StreamingResponse
 import sys
@@ -11,6 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 from api.source.operators.controller import Controller
+from api.source.engines.utils.tester import Tester
 from schemas.schemas import (
     ModelRequest,
     CameraRequest,
@@ -30,13 +31,13 @@ print(f"Captures will be saved to: {CAPTURES_DIR}")
 
 
 app = FastAPI()
-# app.add_middleware(LogMiddleware)
 setup_cors(app)
 
 with open("api/configs/pipeline.yml", "r") as file:
     config = yaml.safe_load(file)
 
 controller = Controller(config)
+tester = Tester(controller)
 
 
 @app.post("/set_model")
@@ -236,3 +237,51 @@ async def get_camera_config(camera_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get config: {str(e)}")
+
+
+@app.post("/api/test/ocr")
+async def test_ocr(image: UploadFile = File(...)):
+    """Test OCR on an uploaded image"""
+    try:
+        contents = await image.read()
+        results = tester.process_lp_image(contents)
+
+        if "error" in results:
+            raise HTTPException(
+                status_code=500,
+                detail=results["error"]
+            )
+
+        return results
+    except Exception as e:
+        import traceback
+        print(f"OCR Test Error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing image: {str(e)}"
+        )
+
+
+@app.post("/api/test/pipeline")
+async def test_pipeline(image: UploadFile = File(...)):
+    """Test full detection pipeline on an uploaded image"""
+    try:
+        contents = await image.read()
+        results = tester.process_image(contents)
+
+        if "error" in results:
+            raise HTTPException(
+                status_code=500,
+                detail=results["error"]
+            )
+
+        return results
+    except Exception as e:
+        import traceback
+        print(f"Pipeline Test Error: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing image: {str(e)}"
+        )
